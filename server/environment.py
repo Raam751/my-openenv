@@ -100,11 +100,15 @@ class ExpenseAuditEnvironment(Environment):
         feedback = "Unknown action"
 
         if action.action_type == "view_report":
-            reward_value = 0.15
-            # Store report without golden answer for the observation
-            safe_report = {k: v for k, v in report.items() if k != "golden"}
-            self._state["current_report"] = safe_report
-            feedback = f"Viewed report {action.report_id}"
+            if report is None:
+                reward_value = -0.1
+                feedback = f"Report {action.report_id} not found"
+            else:
+                reward_value = 0.15
+                # Store report without golden answer for the observation
+                safe_report = {k: v for k, v in report.items() if k != "golden"}
+                self._state["current_report"] = safe_report
+                feedback = f"Viewed report {action.report_id}"
         elif action.action_type == "check_policy":
             reward_value = 0.25
             feedback = "Policy checked"
