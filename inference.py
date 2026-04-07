@@ -223,6 +223,13 @@ def run_task_direct(task_id: str) -> float:
                 score = info.get("grader_score", 0.01)
                 break
 
+        # If episode didn't complete, compute partial score from rewards
+        if not done and rewards:
+            # Normalize: positive rewards indicate progress, scale to (0, 1)
+            total_reward = sum(rewards)
+            max_possible = steps_taken * 0.45  # max reward per step
+            score = max(0.01, min(0.50, total_reward / max_possible)) if max_possible > 0 else 0.01
+
         score = min(max(score, 0.01), 0.99)
         success = score >= SUCCESS_SCORE_THRESHOLD
 
@@ -277,6 +284,12 @@ async def run_task_docker(task_id: str) -> float:
                 info = obs_data["metadata"]
                 score = info.get("grader_score", 0.01)
                 break
+
+        # If episode didn't complete, compute partial score from rewards
+        if not done and rewards:
+            total_reward = sum(rewards)
+            max_possible = steps_taken * 0.45
+            score = max(0.01, min(0.50, total_reward / max_possible)) if max_possible > 0 else 0.01
 
         score = min(max(score, 0.01), 0.99)
         success = score >= SUCCESS_SCORE_THRESHOLD
