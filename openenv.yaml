@@ -15,14 +15,17 @@ tasks:
     name: Single clean report
     description: One employee report with 2 perfect receipts. Approve after verification.
     difficulty: easy
+    has_grader: true
   - id: medium
     name: Minor policy violations
     description: Report with over-limit meal and one missing receipt. Partial approve + flag.
     difficulty: medium
+    has_grader: true
   - id: hard
     name: Batch with fraud & duplicates
     description: 4 reports containing duplicates, personal spend, and currency issues. Prioritize and decide correctly.
     difficulty: hard
+    has_grader: true
 
 metadata:
   domain: finance
