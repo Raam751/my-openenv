@@ -46,8 +46,9 @@ from openai import OpenAI
 from client import ExpenseAuditEnv
 from models import Action
 
-IMAGE_NAME = os.getenv("IMAGE_NAME")  # If you are using docker image
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")  # If you are using docker image
+HF_TOKEN = os.getenv("HF_TOKEN")
+API_KEY = HF_TOKEN or os.getenv("API_KEY")
 
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
@@ -159,8 +160,8 @@ async def run_task(task_id: str) -> float:
     """Run a single task episode and return a score in [0, 1]."""
     client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
-    if IMAGE_NAME:
-        env = await ExpenseAuditEnv.from_docker_image(IMAGE_NAME)
+    if LOCAL_IMAGE_NAME:
+        env = await ExpenseAuditEnv.from_docker_image(LOCAL_IMAGE_NAME)
     else:
         env = ExpenseAuditEnv(base_url=os.getenv("ENV_BASE_URL", "http://localhost:8000"))
 
