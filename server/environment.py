@@ -50,14 +50,34 @@ class ExpenseAuditEnvironment(Environment):
     def _generate_hard_data(self):
         return {
             "reports": [
-                {"id": "R003", "employee": "Carol", "total": 120.0, "golden": "approve",
-                 "items": [{"cat": "meals", "amt": 45.0, "rec": "REC3"}, {"cat": "travel", "amt": 75.0, "rec": "REC6"}]},
-                {"id": "R004", "employee": "David", "total": 95.0, "golden": "reject",
-                 "items": [{"cat": "meals", "amt": 95.0, "rec": "REC4"}]},
-                {"id": "R005", "employee": "Eve", "total": 210.0, "golden": "reject",
-                 "items": [{"cat": "travel", "amt": 150.0, "rec": "REC7"}, {"cat": "supplies", "amt": 60.0, "rec": "REC8"}]},
+                # R003: APPROVE — looks suspicious (high total $195) but every item is within limits
+                {"id": "R003", "employee": "Carol", "total": 195.0, "golden": "approve",
+                 "items": [{"cat": "meals", "amt": 49.50, "rec": "REC3"}, {"cat": "travel", "amt": 99.50, "rec": "REC6"},
+                           {"cat": "supplies", "amt": 46.0, "rec": "REC10"}]},
+                # R004: REJECT — meals $51 just barely over $50 limit (borderline trap)
+                {"id": "R004", "employee": "David", "total": 51.0, "golden": "reject",
+                 "items": [{"cat": "meals", "amt": 51.0, "rec": "REC4"}]},
+                # R005: REJECT — total $205 exceeds $200, but individual items are under limits
+                {"id": "R005", "employee": "Eve", "total": 205.0, "golden": "reject",
+                 "items": [{"cat": "travel", "amt": 95.0, "rec": "REC7"}, {"cat": "meals", "amt": 48.0, "rec": "REC11"},
+                           {"cat": "supplies", "amt": 62.0, "rec": "REC8"}]},
+                # R006: APPROVE — small clean report
                 {"id": "R006", "employee": "Frank", "total": 40.0, "golden": "approve",
                  "items": [{"cat": "meals", "amt": 40.0, "rec": "REC9"}]},
+                # R007: REJECT — duplicate receipt REC3 (same as Carol's R003 — fraud)
+                {"id": "R007", "employee": "Grace", "total": 80.0, "golden": "reject",
+                 "items": [{"cat": "meals", "amt": 30.0, "rec": "REC3"}, {"cat": "travel", "amt": 50.0, "rec": "REC12"}]},
+                # R008: REJECT — missing receipt (rec=None)
+                {"id": "R008", "employee": "Hank", "total": 75.0, "golden": "reject",
+                 "items": [{"cat": "travel", "amt": 75.0, "rec": None}]},
+                # R009: APPROVE — all items valid, slightly under every limit
+                {"id": "R009", "employee": "Irene", "total": 148.0, "golden": "approve",
+                 "items": [{"cat": "meals", "amt": 49.0, "rec": "REC13"}, {"cat": "travel", "amt": 99.0, "rec": "REC14"}]},
+                # R010: REJECT — split-billing trick: two meals to avoid per-item limit
+                # but total meals = $48+$47 = $95, which suggests gaming the system
+                # Policy: per-item meals_max=50, but the employee is trying to split
+                {"id": "R010", "employee": "Jake", "total": 95.0, "golden": "reject",
+                 "items": [{"cat": "meals", "amt": 48.0, "rec": "REC15"}, {"cat": "meals", "amt": 47.0, "rec": "REC16"}]},
             ],
             "policy": {"meals_max": 50, "travel_max": 100, "total_max": 200}
         }
@@ -139,11 +159,26 @@ class ExpenseAuditEnvironment(Environment):
         if done:
             total = len(data["reports"])
             correct_count = sum(1 for d in self._state["decisions"].values() if d["correct"])
-            efficiency = max(0.0, 1.0 - (self._state["step_count"] / (total * 8.0)))
-            grader_score = (correct_count / total) + (0.3 * efficiency)
+            steps = self._state["step_count"]
+
+            # Accuracy component (0.0–1.0)
+            accuracy = correct_count / total
+
+            # Efficiency component — harder tasks get stricter step budgets
+            difficulty_multiplier = {"easy": 10.0, "medium": 6.0, "hard": 4.0}
+            budget = total * difficulty_multiplier.get(self.current_task, 6.0)
+            efficiency = max(0.0, 1.0 - (steps / budget))
+
+            # Final score: accuracy dominates, efficiency is a tiebreaker
+            grader_score = (0.7 * accuracy) + (0.3 * efficiency)
             grader_score = max(0.0, min(1.0, grader_score))
+
             info["grader_score"] = grader_score
-            info["details"] = {"correct": correct_count, "total": total, "steps": self._state["step_count"]}
+            info["details"] = {
+                "correct": correct_count, "total": total,
+                "steps": steps, "accuracy": round(accuracy, 3),
+                "efficiency": round(efficiency, 3),
+            }
 
         return Observation(
             pending_reports=[
