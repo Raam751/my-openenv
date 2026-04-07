@@ -6,6 +6,9 @@
 
 """Expense Audit Env environment server components."""
 
-from .environment import ExpenseAuditEnvironment
+try:
+    from .environment import ExpenseAuditEnvironment
+except ImportError:
+    from server.environment import ExpenseAuditEnvironment
 
 __all__ = ["ExpenseAuditEnvironment"]

@@ -6,8 +6,12 @@
 
 """Expense Audit Env Environment."""
 
-from .client import ExpenseAuditEnv
-from .models import ExpenseAuditAction, ExpenseAuditObservation
+try:
+    from .client import ExpenseAuditEnv
+    from .models import ExpenseAuditAction, ExpenseAuditObservation
+except ImportError:
+    from client import ExpenseAuditEnv
+    from models import ExpenseAuditAction, ExpenseAuditObservation
 
 __all__ = [
     "ExpenseAuditAction",
