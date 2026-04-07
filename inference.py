@@ -1,27 +1,25 @@
 """
-Baseline inference script for the Expense Audit Environment.
+Inference Script — Expense Audit Environment
+===================================
+MANDATORY
+- Before submitting, ensure the following variables are defined in your environment configuration:
+    API_BASE_URL   The API endpoint for the LLM.
+    MODEL_NAME     The model identifier to use for inference.
+    HF_TOKEN       Your Hugging Face / API key.
 
-Uses the OpenAI API client to run a model against all 3 tasks
-and produce reproducible baseline scores.
-
-MANDATORY env vars:
-    API_BASE_URL  — The API endpoint for the LLM.
-    MODEL_NAME    — The model identifier to use for inference.
-    HF_TOKEN      — Your Hugging Face / API key.
-    ENV_BASE_URL  — URL of the running environment server (e.g. your HF Space).
+- The inference script must be named `inference.py` and placed in the root directory of the project
+- Participants must use OpenAI Client for all LLM calls using above variables
 """
 
-import os   
+import os
 import json
-import asyncio
 from openai import OpenAI
 from models import Action
-from client import ExpenseAuditEnv
+from server.environment import ExpenseAuditEnvironment
 
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 MODEL_NAME = os.getenv("MODEL_NAME")
-ENV_BASE_URL = os.getenv("ENV_BASE_URL") or "http://localhost:8000"
 
 MAX_STEPS = 15
 TEMPERATURE = 0.2
@@ -56,27 +54,25 @@ def parse_action(text: str, fallback_report_id: str = "R001") -> Action:
     )
 
 
-async def run_task(task_id: str) -> float:
-    """Run a single task via the remote client and return grader score (0.0–1.0)."""
-    async with ExpenseAuditEnv(base_url=ENV_BASE_URL) as env:
-        result = await env.reset(task_id=task_id)
-        obs = result.observation
-        print(f"\n{'='*40}")
-        print(f"  TASK: {task_id.upper()}")
-        print(f"{'='*40}")
-        print(f"Goal: {obs.goal}")
+def run_task(env, task_id: str) -> float:
+    """Run a single task and return grader score (0.0–1.0)."""
+    obs = env.reset(task_id=task_id)
+    print(f"\n{'='*40}")
+    print(f"  TASK: {task_id.upper()}")
+    print(f"{'='*40}")
+    print(f"Goal: {obs.goal}")
 
-        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
-        first_report_id = obs.pending_reports[0]["id"] if obs.pending_reports else "R001"
-        grader_score = 0.0
+    first_report_id = obs.pending_reports[0]["id"] if obs.pending_reports else "R001"
+    grader_score = 0.0
 
-        for step in range(1, MAX_STEPS + 1):
-            if result.done:
-                print("Environment signalled done.")
-                break
+    for step in range(1, MAX_STEPS + 1):
+        if obs.done:
+            print("Environment signalled done.")
+            break
 
-            prompt = f"""Step: {step}
+        prompt = f"""Step: {step}
 Goal: {obs.goal}
 Pending reports: {json.dumps(obs.pending_reports)}
 Current report: {json.dumps(obs.current_report) if obs.current_report else "None"}
@@ -86,45 +82,45 @@ Last feedback: {obs.last_feedback}
 
 Reply with only a single JSON object."""
 
-            try:
-                completion = client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=TEMPERATURE,
-                    max_tokens=300,
-                )
-                response_text = completion.choices[0].message.content or ""
-            except Exception as exc:
-                print(f"  Model request failed ({exc}). Using fallback.")
-                response_text = ""
+        try:
+            completion = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=TEMPERATURE,
+                max_tokens=300,
+            )
+            response_text = completion.choices[0].message.content or ""
+        except Exception as exc:
+            print(f"  Model request failed ({exc}). Using fallback.")
+            response_text = ""
 
-            action = parse_action(response_text, fallback_report_id=first_report_id)
-            print(f"Step {step}: {action.action_type} on {action.report_id}")
+        action = parse_action(response_text, fallback_report_id=first_report_id)
+        print(f"Step {step}: {action.action_type} on {action.report_id}")
 
-            result = await env.step(action)
-            obs = result.observation
-            reward = result.reward or 0.0
-            info = obs.metadata if hasattr(obs, "metadata") else {}
+        obs = env.step(action)
+        reward = obs.reward or 0.0
+        info = obs.metadata if hasattr(obs, "metadata") else {}
 
-            print(f"  → Reward: {reward:+.2f} | Done: {result.done} | Info: {info}")
+        print(f"  → Reward: {reward:+.2f} | Done: {obs.done} | Info: {info}")
 
-            # When done, the environment's grader score is in metadata
-            if result.done:
-                grader_score = info.get("grader_score", 0.0)
-                print(f"Episode complete. Details: {info.get('details', {})}")
-                break
+        # When done, the environment's grader score is in metadata
+        if obs.done:
+            grader_score = info.get("grader_score", 0.0)
+            print(f"Episode complete. Details: {info.get('details', {})}")
+            break
 
-        print(f"\nGRADER SCORE for {task_id}: {grader_score:.3f}")
-        return grader_score
+    print(f"\nGRADER SCORE for {task_id}: {grader_score:.3f}")
+    return grader_score
 
 
-async def main():
+def main():
+    env = ExpenseAuditEnvironment()
     scores = {}
     for task in ["easy", "medium", "hard"]:
-        scores[task] = await run_task(task)
+        scores[task] = run_task(env, task)
     print(f"\n{'='*40}")
     print("  BASELINE SCORES")
     print(f"{'='*40}")
@@ -132,4 +128,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
