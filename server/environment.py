@@ -170,8 +170,9 @@ class ExpenseAuditEnvironment(Environment):
             efficiency = max(0.0, 1.0 - (steps / budget))
 
             # Final score: accuracy dominates, efficiency is a tiebreaker
+            # Clamp to (0.01, 0.99) — validator requires strictly between 0 and 1
             grader_score = (0.7 * accuracy) + (0.3 * efficiency)
-            grader_score = max(0.0, min(1.0, grader_score))
+            grader_score = max(0.01, min(0.99, grader_score))
 
             info["grader_score"] = grader_score
             info["details"] = {
