@@ -3,7 +3,7 @@ Expense Audit Environment (FinOps-Audit-Env)
 Real-world corporate expense report auditing.
 """
 import random
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 # NOTE: `from openenv import Environment` does NOT work (ImportError).
 # The correct import path in openenv-core 0.2.3 is:
@@ -82,7 +82,14 @@ class ExpenseAuditEnvironment(Environment):
             "policy": {"meals_max": 50, "travel_max": 100, "total_max": 200}
         }
 
-    def reset(self, task_id: str = "easy", **kwargs) -> Observation:
+    def reset(self, seed: Optional[int] = None, episode_id: Optional[str] = None, task_id: Optional[str] = None, **kwargs) -> Observation:
+        task_id = episode_id or task_id or "easy"
+        if task_id not in self.task_data:
+            task_id = "easy"
+            
+        if seed is not None:
+            self.seed = seed
+            
         random.seed(self.seed)
         self.current_task = task_id
         data = self.task_data[task_id]
