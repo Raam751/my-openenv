@@ -188,7 +188,7 @@ def run_task_direct(task_id: str) -> float:
 
     rewards: List[float] = []
     steps_taken = 0
-    score = 0.0
+    score = 0.01
     success = False
 
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
@@ -220,10 +220,10 @@ def run_task_direct(task_id: str) -> float:
 
             if done:
                 info = obs_data["metadata"]
-                score = info.get("grader_score", 0.0)
+                score = info.get("grader_score", 0.01)
                 break
 
-        score = min(max(score, 0.0), 1.0)
+        score = min(max(score, 0.01), 0.99)
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     finally:
@@ -241,7 +241,7 @@ async def run_task_docker(task_id: str) -> float:
 
     rewards: List[float] = []
     steps_taken = 0
-    score = 0.0
+    score = 0.01
     success = False
 
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
@@ -275,10 +275,10 @@ async def run_task_docker(task_id: str) -> float:
 
             if done:
                 info = obs_data["metadata"]
-                score = info.get("grader_score", 0.0)
+                score = info.get("grader_score", 0.01)
                 break
 
-        score = min(max(score, 0.0), 1.0)
+        score = min(max(score, 0.01), 0.99)
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     finally:
