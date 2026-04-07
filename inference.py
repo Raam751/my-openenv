@@ -43,8 +43,16 @@ from typing import List, Optional
 
 from openai import OpenAI
 
-from client import ExpenseAuditEnv
+from server.environment import ExpenseAuditEnvironment
 from models import Action
+
+# --- Try to import the async client for Docker mode ---
+try:
+    from client import ExpenseAuditEnv
+
+    _HAS_CLIENT = True
+except Exception:
+    _HAS_CLIENT = False
 
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")  # If you are using docker image
 HF_TOKEN = os.getenv("HF_TOKEN")
@@ -117,25 +125,25 @@ def parse_action(text: str, fallback_report_id: str = "R001") -> Action:
 
 # ───────────────────── Prompt building ─────────────────────
 
-def build_user_prompt(step: int, obs) -> str:
+def build_user_prompt(step: int, obs_data: dict) -> str:
     return textwrap.dedent(
         f"""
         Step: {step}
-        Goal: {obs.goal}
-        Pending reports: {json.dumps(obs.pending_reports)}
-        Current report: {json.dumps(obs.current_report) if obs.current_report else "None"}
-        Current receipts: {json.dumps(obs.current_receipts) if obs.current_receipts else "[]"}
-        Policy: {json.dumps(obs.policy_snapshot)}
-        Last feedback: {obs.last_feedback}
+        Goal: {obs_data['goal']}
+        Pending reports: {json.dumps(obs_data['pending_reports'])}
+        Current report: {json.dumps(obs_data['current_report']) if obs_data['current_report'] else "None"}
+        Current receipts: {json.dumps(obs_data['current_receipts']) if obs_data['current_receipts'] else "[]"}
+        Policy: {json.dumps(obs_data['policy_snapshot'])}
+        Last feedback: {obs_data['last_feedback']}
 
         Reply with only a single JSON object.
         """
     ).strip()
 
 
-def get_model_action(client: OpenAI, step: int, obs, fallback_id: str) -> Action:
+def get_model_action(client: OpenAI, step: int, obs_data: dict, fallback_id: str) -> Action:
     """Call the LLM and parse the response into an Action."""
-    user_prompt = build_user_prompt(step, obs)
+    user_prompt = build_user_prompt(step, obs_data)
     try:
         completion = client.chat.completions.create(
             model=MODEL_NAME,
@@ -154,16 +162,82 @@ def get_model_action(client: OpenAI, step: int, obs, fallback_id: str) -> Action
         return Action(report_id=fallback_id, action_type="view_report", reason="fallback")
 
 
-# ───────────────────── Main loop ─────────────────────
+# ───────────────────── Observation helper ─────────────────────
 
-async def run_task(task_id: str) -> float:
-    """Run a single task episode and return a score in [0, 1]."""
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+def obs_to_dict(obs):
+    """Convert an Observation (Pydantic model or StepResult.observation) to a plain dict."""
+    return {
+        "goal": getattr(obs, "goal", ""),
+        "pending_reports": getattr(obs, "pending_reports", []),
+        "current_report": getattr(obs, "current_report", None),
+        "current_receipts": getattr(obs, "current_receipts", []),
+        "policy_snapshot": getattr(obs, "policy_snapshot", {}),
+        "last_feedback": getattr(obs, "last_feedback", ""),
+        "done": getattr(obs, "done", False),
+        "reward": getattr(obs, "reward", 0.0),
+        "metadata": getattr(obs, "metadata", {}),
+    }
 
-    if LOCAL_IMAGE_NAME:
-        env = await ExpenseAuditEnv.from_docker_image(LOCAL_IMAGE_NAME)
-    else:
-        env = ExpenseAuditEnv(base_url=os.getenv("ENV_BASE_URL", "http://localhost:8000"))
+
+# ───────────────────── Direct mode (no server needed) ─────────────────────
+
+def run_task_direct(task_id: str) -> float:
+    """Run a single task using the environment directly (no Docker/server)."""
+    llm = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    env = ExpenseAuditEnvironment()
+
+    rewards: List[float] = []
+    steps_taken = 0
+    score = 0.0
+    success = False
+
+    log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
+
+    try:
+        obs = env.reset(task_id=task_id)
+        obs_data = obs_to_dict(obs)
+
+        first_report_id = obs_data["pending_reports"][0]["id"] if obs_data["pending_reports"] else "R001"
+
+        for step in range(1, MAX_STEPS + 1):
+            if obs_data["done"]:
+                break
+
+            action = get_model_action(llm, step, obs_data, fallback_id=first_report_id)
+            action_str = f"{action.action_type}({action.report_id})"
+
+            obs = env.step(action)
+            obs_data = obs_to_dict(obs)
+
+            reward = obs_data["reward"] or 0.0
+            done = obs_data["done"]
+            error = None
+
+            rewards.append(reward)
+            steps_taken = step
+
+            log_step(step=step, action=action_str, reward=reward, done=done, error=error)
+
+            if done:
+                info = obs_data["metadata"]
+                score = info.get("grader_score", 0.0)
+                break
+
+        score = min(max(score, 0.0), 1.0)
+        success = score >= SUCCESS_SCORE_THRESHOLD
+
+    finally:
+        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+
+    return score
+
+
+# ───────────────────── Docker mode (from_docker_image) ─────────────────────
+
+async def run_task_docker(task_id: str) -> float:
+    """Run a single task via Docker image (auto-starts container)."""
+    llm = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    env = await ExpenseAuditEnv.from_docker_image(LOCAL_IMAGE_NAME)
 
     rewards: List[float] = []
     steps_taken = 0
@@ -175,18 +249,20 @@ async def run_task(task_id: str) -> float:
     try:
         result = await env.reset(task_id=task_id)
         obs = result.observation
+        obs_data = obs_to_dict(obs)
 
-        first_report_id = obs.pending_reports[0]["id"] if obs.pending_reports else "R001"
+        first_report_id = obs_data["pending_reports"][0]["id"] if obs_data["pending_reports"] else "R001"
 
         for step in range(1, MAX_STEPS + 1):
             if result.done:
                 break
 
-            action = get_model_action(client, step, obs, fallback_id=first_report_id)
+            action = get_model_action(llm, step, obs_data, fallback_id=first_report_id)
             action_str = f"{action.action_type}({action.report_id})"
 
             result = await env.step(action)
             obs = result.observation
+            obs_data = obs_to_dict(obs)
 
             reward = result.reward or 0.0
             done = result.done
@@ -198,12 +274,11 @@ async def run_task(task_id: str) -> float:
             log_step(step=step, action=action_str, reward=reward, done=done, error=error)
 
             if done:
-                # Get grader score from environment metadata
-                info = obs.metadata if hasattr(obs, "metadata") else {}
+                info = obs_data["metadata"]
                 score = info.get("grader_score", 0.0)
                 break
 
-        score = min(max(score, 0.0), 1.0)  # clamp to [0, 1]
+        score = min(max(score, 0.0), 1.0)
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     finally:
@@ -216,12 +291,24 @@ async def run_task(task_id: str) -> float:
     return score
 
 
-async def main() -> None:
+# ───────────────────── Entry point ─────────────────────
+
+def main() -> None:
     scores = {}
-    for task in ["easy", "medium", "hard"]:
-        scores[task] = await run_task(task)
+
+    if LOCAL_IMAGE_NAME and _HAS_CLIENT:
+        # Docker mode: auto-start container via from_docker_image()
+        async def _run():
+            for task in ["easy", "medium", "hard"]:
+                scores[task] = await run_task_docker(task)
+        asyncio.run(_run())
+    else:
+        # Direct mode: use environment in-process (no server needed)
+        for task in ["easy", "medium", "hard"]:
+            scores[task] = run_task_direct(task)
+
     print(f"\nFinal scores: {json.dumps(scores, indent=2)}", flush=True)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
