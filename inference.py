@@ -307,20 +307,21 @@ async def run_task_docker(task_id: str) -> float:
 # ───────────────────── Entry point ─────────────────────
 
 def main() -> None:
-    scores = {}
+    # OpenEnv evaluator runs one task per inference script execution
+    # Run a single task and return a single final score.
+    task_id = os.getenv("TASK_ID", "easy")
+    score = 0.0
 
     if LOCAL_IMAGE_NAME and _HAS_CLIENT:
         # Docker mode: auto-start container via from_docker_image()
         async def _run():
-            for task in ["easy", "medium", "hard"]:
-                scores[task] = await run_task_docker(task)
-        asyncio.run(_run())
+            return await run_task_docker(task_id)
+        score = asyncio.run(_run())
     else:
         # Direct mode: use environment in-process (no server needed)
-        for task in ["easy", "medium", "hard"]:
-            scores[task] = run_task_direct(task)
+        score = run_task_direct(task_id)
 
-    print(f"\nFinal scores: {json.dumps(scores, indent=2)}", flush=True)
+    print(f"\nFinal score for {task_id}: {score:.3f}", flush=True)
 
 
 if __name__ == "__main__":
