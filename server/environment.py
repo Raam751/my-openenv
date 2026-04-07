@@ -119,8 +119,8 @@ class ExpenseAuditEnvironment(Environment):
             reward_value = 0.45 if correct else -0.25
             decision_word = "Approved" if action.action_type == "approve" else "Rejected"
             feedback = f"{decision_word} report (correct: {correct})"
-            if correct:
-                self._state["processed"][action.report_id] = action.action_type
+            # Mark as processed regardless of correctness — grader needs all reports decided
+            self._state["processed"][action.report_id] = action.action_type
         elif action.action_type == "flag_duplicate":
             info["violation_detected"] = True
             reward_value = 0.35
