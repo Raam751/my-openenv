@@ -1,5 +1,5 @@
 ---
-title: Expense Audit Env Environment Server
+title: ExpenseGuard Env
 emoji: 💰
 colorFrom: green
 colorTo: blue
@@ -11,7 +11,7 @@ tags:
   - openenv
 ---
 
-# Expense Audit Environment (FinOps-Audit-Env)
+# ExpenseGuard Env
 
 A real-world **corporate expense report auditing** environment for training and evaluating AI agents. Agents verify receipts, enforce spending policy, detect fraud/duplicates, and approve or reject employee expense reports — mirroring the exact daily workflow of finance teams worldwide.
 
