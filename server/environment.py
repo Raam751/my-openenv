@@ -195,14 +195,11 @@ class ExpenseAuditEnvironment(Environment):
             
             if not viewed_first:
                 reward_value = -0.75
-                feedback = f"Blind guess rejected! You must view report {action.report_id} first"
-            elif correct:
-                reward_value = 0.45
-                feedback = f"Correctly decided {action.action_type} for {action.report_id}"
+                feedback = f"System Error: Cannot process decision. Report {action.report_id} must be viewed first."
             else:
-                reward_value = -0.25
+                reward_value = 0.45 if correct else -0.25
                 decision_word = "Approved" if action.action_type == "approve" else "Rejected"
-                feedback = f"{decision_word} report but decision was incorrect"
+                feedback = f"{decision_word} report {action.report_id} successfully."
                 
             # Mark as processed regardless of correctness — grader needs all reports decided
             self._state["processed"][action.report_id] = action.action_type
