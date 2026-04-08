@@ -125,6 +125,7 @@ class ExpenseAuditEnvironment(Environment):
             "processed": {},
             "decisions": {},
             "step_count": 0,
+            "reports_viewed": set(),
             "data": data
         }
         self._internal_state = State(episode_id=task_id, step_count=0)
@@ -165,17 +166,34 @@ class ExpenseAuditEnvironment(Environment):
                 # Store report without golden answer for the observation
                 safe_report = {k: v for k, v in report.items() if k != "golden"}
                 self._state["current_report"] = safe_report
+                self._state["reports_viewed"].add(action.report_id)
                 feedback = f"Viewed report {action.report_id}"
         elif action.action_type == "check_policy":
             reward_value = 0.25
             feedback = "Policy checked"
         elif action.action_type in ["approve", "reject"]:
-            correct = bool(report and report["golden"] == action.action_type)
+            viewed_first = action.report_id in self._state["reports_viewed"]
+            is_correct_match = bool(report and report["golden"] == action.action_type)
+            correct = viewed_first and is_correct_match
+
             info["correct_decision"] = correct
-            self._state["decisions"][action.report_id] = {"correct": correct, "golden": report["golden"] if report else None}
-            reward_value = 0.45 if correct else -0.25
-            decision_word = "Approved" if action.action_type == "approve" else "Rejected"
-            feedback = f"{decision_word} report (correct: {correct})"
+            self._state["decisions"][action.report_id] = {
+                "correct": correct, 
+                "golden": report["golden"] if report else None,
+                "viewed_first": viewed_first
+            }
+            
+            if not viewed_first:
+                reward_value = -0.75
+                feedback = f"Blind guess rejected! You must view report {action.report_id} first"
+            elif correct:
+                reward_value = 0.45
+                feedback = f"Correctly decided {action.action_type} for {action.report_id}"
+            else:
+                reward_value = -0.25
+                decision_word = "Approved" if action.action_type == "approve" else "Rejected"
+                feedback = f"{decision_word} report but decision was incorrect"
+                
             # Mark as processed regardless of correctness — grader needs all reports decided
             self._state["processed"][action.report_id] = action.action_type
         elif action.action_type == "flag_duplicate":
@@ -195,27 +213,45 @@ class ExpenseAuditEnvironment(Environment):
         # Deterministic grader (required for validator)
         if done:
             total = len(data["reports"])
-            correct_count = sum(1 for d in self._state["decisions"].values() if d["correct"])
+            decisions = self._state["decisions"]
+            correct_count = sum(1 for d in decisions.values() if d["correct"])
             steps = self._state["step_count"]
 
-            # Accuracy component (0.0–1.0)
+            # Accuracy strongly dominates
             accuracy = correct_count / total
 
-            # Efficiency component — harder tasks get stricter step budgets
-            difficulty_multiplier = {"easy": 10.0, "medium": 6.0, "hard": 4.0}
-            budget = total * difficulty_multiplier.get(self.current_task, 6.0)
+            # Efficiency acts purely as a tiebreaker/penalty (never outweighs accuracy)
+            budget = total * 10.0  # Generous budget to encourage thorough checking
             efficiency = max(0.0, 1.0 - (steps / budget))
 
-            # Final score: accuracy dominates, efficiency is a tiebreaker
-            # Clamp to (0.01, 0.99) — validator requires strictly between 0 and 1
-            grader_score = (0.7 * accuracy) + (0.3 * efficiency)
+            # Base Weights and Formula
+            accuracy_weight = 0.90
+            efficiency_weight = 0.10
+            fraud_bonus = 0.0
+
+            # Explicit bonus for fraud/duplicate detection on the Hard task
+            if self.current_task == "hard":
+                accuracy_weight = 0.70  # Shift 20% weight to strict fraud/duplicate detection bonuses
+                caught_dup = decisions.get("R007", {}).get("correct", False)
+                caught_split = decisions.get("R010", {}).get("correct", False)
+                
+                if caught_dup: fraud_bonus += 0.10
+                if caught_split: fraud_bonus += 0.10
+
+            # Prevent fast-guessing reward hacking: Efficiency is ONLY rewarded if accuracy is very high
+            actual_efficiency = efficiency * efficiency_weight if accuracy >= 0.75 else 0.0
+
+            grader_score = (accuracy_weight * accuracy) + actual_efficiency + fraud_bonus
             grader_score = max(0.01, min(0.99, grader_score))
 
             info["grader_score"] = grader_score
             info["details"] = {
-                "correct": correct_count, "total": total,
-                "steps": steps, "accuracy": round(accuracy, 3),
-                "efficiency": round(efficiency, 3),
+                "correct": correct_count, 
+                "total": total,
+                "steps": steps, 
+                "accuracy": round(accuracy, 3),
+                "efficiency_bonus": round(actual_efficiency, 3),
+                "fraud_bonus": round(fraud_bonus, 3)
             }
 
         # When episode is done, use grader_score as the reward so evaluator can read it
