@@ -168,9 +168,19 @@ class ExpenseAuditEnvironment(Environment):
                 self._state["current_report"] = safe_report
                 self._state["reports_viewed"].add(action.report_id)
                 feedback = f"Viewed report {action.report_id}"
-        elif action.action_type == "check_policy":
-            reward_value = 0.25
-            feedback = "Policy checked"
+        elif action.action_type == "verify_receipts":
+            if report is None:
+                feedback = f"Report {action.report_id} not found."
+                reward_value = -0.1
+            else:
+                self._state["reports_viewed"].add(action.report_id)
+                receipt_ids = [item.get("rec") for item in report.get("items", []) if item.get("rec")]
+                if not receipt_ids:
+                    feedback = f"Failure: No valid receipts attached to {action.report_id}."
+                else:
+                    self._state["current_receipts"] = [{"id": rid, "status": "verified"} for rid in receipt_ids]
+                    feedback = f"Success: Verified {len(receipt_ids)} unique receipts for {action.report_id}."
+                    reward_value = 0.25
         elif action.action_type in ["approve", "reject"]:
             viewed_first = action.report_id in self._state["reports_viewed"]
             is_correct_match = bool(report and report["golden"] == action.action_type)
@@ -196,13 +206,9 @@ class ExpenseAuditEnvironment(Environment):
                 
             # Mark as processed regardless of correctness — grader needs all reports decided
             self._state["processed"][action.report_id] = action.action_type
-        elif action.action_type == "flag_duplicate":
-            info["violation_detected"] = True
-            reward_value = 0.35
-            feedback = "Duplicate flagged"
         else:
-            reward_value = 0.1
-            feedback = f"Action {action.action_type} executed"
+            reward_value = -0.1
+            feedback = f"Invalid action: {action.action_type}"
 
         # Anti-loop penalty
         if self._state["step_count"] > 30:

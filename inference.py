@@ -74,8 +74,7 @@ SYSTEM_PROMPT = textwrap.dedent(
 
     Reply with EXACTLY one valid JSON action object with these fields:
     - "report_id": string (e.g. "R001")
-    - "action_type": one of "view_report", "view_receipt", "match_receipt",
-      "check_policy", "approve", "reject", "flag_duplicate", "request_more_info"
+    - "action_type": one of "view_report", "verify_receipts", "approve", "reject"
     - "fields": optional dict (e.g. {"receipt_id": "REC1"})
     - "reason": optional string explaining your decision
 
@@ -160,7 +159,7 @@ def get_model_action(client: OpenAI, step: int, obs_data: dict, fallback_id: str
     except Exception as exc:
         print(f"[DEBUG] Model request failed: {exc}", flush=True)
         # Cycle actions based on step so episodes can finish even without API key
-        actions = ["view_report", "check_policy", "approve", "reject"]
+        actions = ["view_report", "verify_receipts", "approve", "reject"]
         fallback_action = actions[step % len(actions)]
         return Action(report_id=fallback_id, action_type=fallback_action, reason="fallback")
 

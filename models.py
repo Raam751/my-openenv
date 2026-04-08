@@ -16,9 +16,10 @@ class Action(_BaseAction):
 
     report_id: str
     action_type: Literal[
-        "view_report", "view_receipt", "match_receipt",
-        "check_policy", "approve", "reject",
-        "flag_duplicate", "request_more_info"
+        "view_report", 
+        "verify_receipts", 
+        "approve", 
+        "reject"
     ]
     fields: Optional[Dict[str, Any]] = None
     reason: Optional[str] = None
