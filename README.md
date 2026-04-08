@@ -27,9 +27,30 @@ The action space is highly streamlined to eliminate agent hallucination and prev
 | Action Type | Description |
 |---|---|
 | `view_report` | Fetches the full JSON details of a report ID. **(Mandatory before making a decision)** |
-| `verify_receipts` | Cross-references attached receipts with items to ensure unique, valid matching. |
+| `view_receipt` | Retrieves evidence for a specific receipt ID (passed in `fields`). |
+| `verify_receipts` | Cross-references all attached receipts for the current report. |
+| `check_policy` | Retrieves dynamic spending limits and rules for the report's categories. |
+| `flag_duplicate` | Marks a report internally as a suspected duplicate for auditor review. |
+| `request_more_info` | Issues a supplemental inquiry to the employee (simulated). |
 | `approve` | Terminal decision: The report is clean and explicitly complies with all policy rules. |
 | `reject` | Terminal decision: The report contains a policy violation, missing evidence, or fraud. |
+
+*Note: All actions optionally accept a `reason: str` field to log internal chain-of-thought.*
+
+---
+
+## Reward Function
+
+The environment uses a balanced reward signal designed to discipline agents toward thorough auditing while strictly preventing reward farming.
+
+| Action | Reward | Notes |
+|---|---|---|
+| Informational | +0.05 | Small incentive for gathering info (first-time only) |
+| Repetition | -0.10 | Immediate penalty for repeating the same action on a report |
+| `approve` (correct) | **+1.00** | Massive terminal reward for accuracy |
+| `reject` (correct) | **+1.00** | Massive terminal reward for accuracy |
+| Incorrect | -1.00 | Heavy penalty for wrong decisions |
+| Blind Guess | **-1.00** | Penalizes decisions made without calling `view_report` |
 
 *Note: All actions optionally accept a `reason: str` field to log internal chain-of-thought.*
 

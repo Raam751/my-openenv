@@ -126,7 +126,11 @@ class ExpenseAuditEnvironment(Environment):
             "decisions": {},
             "step_count": 0,
             "reports_viewed": set(),
+            "receipts_viewed": set(),
             "receipts_verified": set(),
+            "policy_checked": set(),
+            "flags": {},
+            "requests": set(),
             "data": data
         }
         self._internal_state = State(episode_id=task_id, step_count=0)
@@ -172,6 +176,40 @@ class ExpenseAuditEnvironment(Environment):
                 self._state["current_report"] = safe_report
                 self._state["reports_viewed"].add(action.report_id)
                 feedback = f"Viewed report {action.report_id}"
+        elif action.action_type == "view_receipt":
+            receipt_id = action.fields.get("receipt_id") if action.fields else None
+            if not receipt_id:
+                reward_value = -0.1
+                feedback = "Error: action 'view_receipt' requires a 'receipt_id' in fields."
+            else:
+                lookup_key = f"{action.report_id}:{receipt_id}"
+                if lookup_key in self._state["receipts_viewed"]:
+                    reward_value = -0.1
+                else:
+                    reward_value = 0.05
+                    self._state["receipts_viewed"].add(lookup_key)
+                feedback = f"Retrieved data for receipt {receipt_id}."
+        elif action.action_type == "check_policy":
+            if action.report_id in self._state["policy_checked"]:
+                reward_value = -0.1
+            else:
+                reward_value = 0.05
+                self._state["policy_checked"].add(action.report_id)
+            feedback = f"Snapshot: Policy limits for {action.report_id} categories retrieved."
+        elif action.action_type == "flag_duplicate":
+            if action.report_id in self._state["flags"]:
+                reward_value = -0.1
+            else:
+                reward_value = 0.05
+                self._state["flags"][action.report_id] = "duplicate"
+            feedback = f"Report {action.report_id} flagged for duplicate review."
+        elif action.action_type == "request_more_info":
+            if action.report_id in self._state["requests"]:
+                reward_value = -0.1
+            else:
+                reward_value = 0.05
+                self._state["requests"].add(action.report_id)
+            feedback = f"Inquiry sent to employee for report {action.report_id}."
         elif action.action_type == "verify_receipts":
             if report is None:
                 feedback = f"Report {action.report_id} not found."

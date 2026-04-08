@@ -17,7 +17,11 @@ class Action(_BaseAction):
     report_id: str
     action_type: Literal[
         "view_report", 
+        "view_receipt",
         "verify_receipts", 
+        "check_policy",
+        "flag_duplicate",
+        "request_more_info",
         "approve", 
         "reject"
     ]
