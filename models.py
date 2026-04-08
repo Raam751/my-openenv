@@ -33,6 +33,7 @@ class Observation(_BaseObservation):
     policy_snapshot: Dict[str, Any] = {}
     goal: str = ""
     last_feedback: str = ""
+    grader_score: Optional[float] = None  # Exposed as a top-level field so it survives serialization
 
 
 class Reward(BaseModel):

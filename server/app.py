@@ -15,6 +15,7 @@ Endpoints:
     - POST /step: Execute an action
     - GET /state: Get current environment state
     - GET /schema: Get action/observation schemas
+    - GET /tasks: List available tasks with grader info
     - WS /ws: WebSocket endpoint for persistent sessions
 
 Usage:
@@ -51,6 +52,40 @@ app = create_app(
     env_name="expense_audit_env",
     max_concurrent_envs=1,  # increase this number to allow more concurrent WebSocket sessions
 )
+
+
+# ── Custom /tasks endpoint so the evaluator can discover graded tasks ──
+@app.get("/tasks", tags=["Environment Info"])
+def list_tasks():
+    """List available tasks with grader information.
+    
+    The evaluator checks this endpoint to discover which tasks have graders.
+    """
+    return {
+        "tasks": [
+            {
+                "id": "easy",
+                "name": "Single clean report",
+                "description": "One employee report with 2 perfect receipts. Approve after verification.",
+                "difficulty": "easy",
+                "has_grader": True,
+            },
+            {
+                "id": "medium",
+                "name": "Minor policy violations",
+                "description": "Report with over-limit meal and one missing receipt. Partial approve + flag.",
+                "difficulty": "medium",
+                "has_grader": True,
+            },
+            {
+                "id": "hard",
+                "name": "Batch with fraud & duplicates",
+                "description": "8 reports containing borderline amounts, duplicate receipts, missing receipts, and split-billing tricks.",
+                "difficulty": "hard",
+                "has_grader": True,
+            },
+        ]
+    }
 
 
 def main(host: str = "0.0.0.0", port: int = 8000):

@@ -117,6 +117,9 @@ class ExpenseAuditEnvironment(Environment):
     # which requires .model_dump(), .reward, .done — only Observation has these.
     # StepResult is a plain dataclass used CLIENT-SIDE only.
     def step(self, action: Action, **kwargs) -> Observation:
+        # Auto-reset if step is called without a prior reset (stateless HTTP mode)
+        if not self._state:
+            self.reset(task_id="easy")
         self._state["step_count"] += 1
         self._internal_state.step_count += 1
         data = self._state["data"]
@@ -188,6 +191,11 @@ class ExpenseAuditEnvironment(Environment):
                 "efficiency": round(efficiency, 3),
             }
 
+        # When episode is done, use grader_score as the reward so evaluator can read it
+        final_grader = info.get("grader_score", None)
+        if done and final_grader is not None:
+            reward_value = final_grader
+
         return Observation(
             pending_reports=[
                 {k: v for k, v in r.items() if k != "golden"}
@@ -202,6 +210,7 @@ class ExpenseAuditEnvironment(Environment):
             done=done,
             reward=reward_value,
             metadata=info,
+            grader_score=final_grader,
         )
 
     # NOTE: OpenEnv base class defines `state` as an abstract @property
