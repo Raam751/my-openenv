@@ -33,7 +33,16 @@ class ExpenseAuditEnvironment(Environment):
                            {"cat": "travel", "amt": 75.5, "rec": "REC2"}],
                  "golden": "approve"}
             ],
-            "policy": {"meals_max": 50, "travel_max": 100, "total_max": 200}
+            "policy": {
+                "limits": {"meals_max": 50, "travel_max": 100, "total_max": 200},
+                "rules": [
+                    "1. The sum of items in a category cannot exceed that category's limit.",
+                    "2. The total report sum cannot exceed total_max.",
+                    "3. Every item must have a valid attached receipt.",
+                    "4. Submitting the same receipt ID across different reports is duplicate fraud and must be rejected.",
+                    "5. Split-billing (submitting multiple small items in the same category) is only valid if their SUM is under the category limit."
+                ]
+            }
         }
 
     def _generate_medium_data(self):
@@ -44,7 +53,16 @@ class ExpenseAuditEnvironment(Environment):
                            {"cat": "supplies", "amt": 67.0, "rec": "REC5"}],
                  "golden": "reject"}
             ],
-            "policy": {"meals_max": 50, "travel_max": 100, "total_max": 200}
+            "policy": {
+                "limits": {"meals_max": 50, "travel_max": 100, "total_max": 200},
+                "rules": [
+                    "1. The sum of items in a category cannot exceed that category's limit.",
+                    "2. The total report sum cannot exceed total_max.",
+                    "3. Every item must have a valid attached receipt.",
+                    "4. Submitting the same receipt ID across different reports is duplicate fraud and must be rejected.",
+                    "5. Split-billing (submitting multiple small items in the same category) is only valid if their SUM is under the category limit."
+                ]
+            }
         }
 
     def _generate_hard_data(self):
@@ -79,7 +97,16 @@ class ExpenseAuditEnvironment(Environment):
                 {"id": "R010", "employee": "Jake", "total": 95.0, "golden": "reject",
                  "items": [{"cat": "meals", "amt": 48.0, "rec": "REC15"}, {"cat": "meals", "amt": 47.0, "rec": "REC16"}]},
             ],
-            "policy": {"meals_max": 50, "travel_max": 100, "total_max": 200}
+            "policy": {
+                "limits": {"meals_max": 50, "travel_max": 100, "total_max": 200},
+                "rules": [
+                    "1. The sum of items in a category cannot exceed that category's limit.",
+                    "2. The total report sum cannot exceed total_max.",
+                    "3. Every item must have a valid attached receipt.",
+                    "4. Submitting the same receipt ID across different reports is duplicate fraud and must be rejected.",
+                    "5. Split-billing (submitting multiple small items in the same category) is only valid if their SUM is under the category limit."
+                ]
+            }
         }
 
     def reset(self, seed: Optional[int] = None, episode_id: Optional[str] = None, task_id: Optional[str] = None, **kwargs) -> Observation:
