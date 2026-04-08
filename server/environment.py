@@ -231,6 +231,14 @@ class ExpenseAuditEnvironment(Environment):
             correct_count = sum(1 for d in decisions.values() if d["correct"])
             steps = self._state["step_count"]
 
+            true_positives = sum(1 for d in decisions.values() if d["golden"] == "approve" and d["correct"])
+            true_negatives = sum(1 for d in decisions.values() if d["golden"] == "reject" and d["correct"])
+            false_positives = sum(1 for d in decisions.values() if d["golden"] == "reject" and not d["correct"])
+            false_negatives = sum(1 for d in decisions.values() if d["golden"] == "approve" and not d["correct"])
+            
+            evidence_used = len(self._state["receipts_verified"])
+            evidence_usage_ratio = min(1.0, evidence_used / total) if total > 0 else 0.0
+
             # Accuracy strongly dominates
             accuracy = correct_count / total
 
@@ -260,12 +268,16 @@ class ExpenseAuditEnvironment(Environment):
 
             info["grader_score"] = grader_score
             info["details"] = {
-                "correct": correct_count, 
-                "total": total,
-                "steps": steps, 
-                "accuracy": round(accuracy, 3),
+                "decision_accuracy_ratio": round(accuracy, 3),
+                "true_positives": true_positives,
+                "true_negatives": true_negatives,
+                "false_positives": false_positives,
+                "false_negatives": false_negatives,
+                "evidence_usage_ratio": round(evidence_usage_ratio, 3),
                 "efficiency_bonus": round(actual_efficiency, 3),
-                "fraud_bonus": round(fraud_bonus, 3)
+                "fraud_bonus": round(fraud_bonus, 3),
+                "steps": steps,
+                "total_reports": total
             }
 
         # When episode is done, use grader_score as the reward so evaluator can read it
