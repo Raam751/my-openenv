@@ -126,6 +126,7 @@ class ExpenseAuditEnvironment(Environment):
             "decisions": {},
             "step_count": 0,
             "reports_viewed": set(),
+            "receipts_verified": set(),
             "data": data
         }
         self._internal_state = State(episode_id=task_id, step_count=0)
@@ -162,8 +163,11 @@ class ExpenseAuditEnvironment(Environment):
                 reward_value = -0.1
                 feedback = f"Report {action.report_id} not found"
             else:
-                reward_value = 0.15
-                # Store report without golden answer for the observation
+                if action.report_id in self._state["reports_viewed"]:
+                    reward_value = -0.1  # Penalize repetition
+                else:
+                    reward_value = 0.05  # Small reward for initial exploration
+                
                 safe_report = {k: v for k, v in report.items() if k != "golden"}
                 self._state["current_report"] = safe_report
                 self._state["reports_viewed"].add(action.report_id)
@@ -173,14 +177,20 @@ class ExpenseAuditEnvironment(Environment):
                 feedback = f"Report {action.report_id} not found."
                 reward_value = -0.1
             else:
+                if action.report_id in self._state["receipts_verified"]:
+                    reward_value = -0.1  # Penalize repetition
+                else:
+                    reward_value = 0.05  # Small initial reward
+                    
                 self._state["reports_viewed"].add(action.report_id)
+                self._state["receipts_verified"].add(action.report_id)
                 receipt_ids = [item.get("rec") for item in report.get("items", []) if item.get("rec")]
+                
                 if not receipt_ids:
                     feedback = f"Failure: No valid receipts attached to {action.report_id}."
                 else:
                     self._state["current_receipts"] = [{"id": rid, "status": "verified"} for rid in receipt_ids]
                     feedback = f"Success: Verified {len(receipt_ids)} unique receipts for {action.report_id}."
-                    reward_value = 0.25
         elif action.action_type in ["approve", "reject"]:
             viewed_first = action.report_id in self._state["reports_viewed"]
             is_correct_match = bool(report and report["golden"] == action.action_type)
@@ -194,10 +204,11 @@ class ExpenseAuditEnvironment(Environment):
             }
             
             if not viewed_first:
-                reward_value = -0.75
+                reward_value = -1.0 # Heavy penalty for blind guessing
                 feedback = f"System Error: Cannot process decision. Report {action.report_id} must be viewed first."
             else:
-                reward_value = 0.45 if correct else -0.25
+                # Terminal decision matters most
+                reward_value = 1.0 if correct else -1.0
                 decision_word = "Approved" if action.action_type == "approve" else "Rejected"
                 feedback = f"{decision_word} report {action.report_id} successfully."
                 
