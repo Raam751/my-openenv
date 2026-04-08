@@ -310,21 +310,37 @@ async def run_task_docker(task_id: str) -> float:
 # ───────────────────── Entry point ─────────────────────
 
 def main() -> None:
-    # OpenEnv evaluator runs one task per inference script execution
-    # Run a single task and return a single final score.
-    task_id = os.getenv("TASK_ID", "easy")
-    score = 0.0
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--task", type=str, help="Specific task to run")
+    args, unknown = parser.parse_known_args()
+    
+    # Determine which tasks to run
+    tasks_to_run = ["easy", "medium", "hard"]
+    if args.task:
+        tasks_to_run = [args.task]
+    elif len(unknown) > 0 and unknown[0] in ["easy", "medium", "hard"]:
+        tasks_to_run = [unknown[0]]
+    elif os.getenv("TASK_ID") or os.getenv("OPENENV_TASK"):
+        tasks = os.getenv("TASK_ID") or os.getenv("OPENENV_TASK")
+        if tasks:
+            tasks_to_run = [tasks]
 
-    if LOCAL_IMAGE_NAME and _HAS_CLIENT:
-        # Docker mode: auto-start container via from_docker_image()
-        async def _run():
-            return await run_task_docker(task_id)
-        score = asyncio.run(_run())
+    scores = {}
+    for task_id in tasks_to_run:
+        if LOCAL_IMAGE_NAME and _HAS_CLIENT:
+            # Docker mode
+            async def _run():
+                return await run_task_docker(task_id)
+            scores[task_id] = asyncio.run(_run())
+        else:
+            # Direct mode
+            scores[task_id] = run_task_direct(task_id)
+            
+    if len(tasks_to_run) == 1:
+        print(f"\nFinal score for {tasks_to_run[0]}: {scores[tasks_to_run[0]]:.3f}", flush=True)
     else:
-        # Direct mode: use environment in-process (no server needed)
-        score = run_task_direct(task_id)
-
-    print(f"\nFinal score for {task_id}: {score:.3f}", flush=True)
+        print(f"\nFinal scores: {json.dumps(scores, indent=2)}", flush=True)
 
 
 if __name__ == "__main__":
